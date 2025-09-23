@@ -3,9 +3,10 @@
 
 # defaults
 SIM ?= icarus
+WAVES ?= 1
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = project.v
+PROJECT_SOURCES = project.v femto_quark_bi.v mem_ctrl.v qspi_ctrl.v rf_top.v
 
 ifneq ($(GATES),yes)
 
@@ -39,6 +40,7 @@ TOPLEVEL = tb
 
 # List test modules to run, separated by commas and without the .py suffix:
 COCOTB_TEST_MODULES = test
+MODULE ?= test
 
 # include cocotb's make rules to take care of the simulator setup
 include $(shell cocotb-config --makefiles)/Makefile.sim
