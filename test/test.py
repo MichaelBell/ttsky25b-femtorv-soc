@@ -179,7 +179,7 @@ class LoadOp:
         self.val = random.randint(-0x80000000, 0x7fffffff)
 
     def execute_fn(self, rd, rs1, arg2):
-        if rd != 0 and rd != 3 and rd != 4:
+        if rd != 0:
             reg[rd] = self.fn(self.val)
 
     def encode(self, rd, rs1, arg2):
@@ -278,7 +278,7 @@ async def test_random(dut):
     await reset(dut)
 
     seed = random.randint(0, 0xFFFFFFFF)
-    #seed = 3287254906
+    #seed = 4214535914
 
     latch_ram = False
     if latch_ram:

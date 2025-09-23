@@ -253,9 +253,12 @@ module FemtoRV32(
    // LOAD, in addition to funct3[1:0], LOAD depends on:
    // - funct3[2] (instr[14]): 0->do sign expansion   1->no sign expansion
 
+   wire LOAD_sign =
+	!instr[14] & (mem_byteAccess ? mem_rdata[7] : mem_rdata[15]);
+
    wire [31:0] LOAD_data =
-         mem_byteAccess ? {{24{mem_rdata[7]}}, mem_rdata[7:0]} :
-     mem_halfwordAccess ? {{16{mem_rdata[15]}}, mem_rdata[15:0]} :
+         mem_byteAccess ? {{24{LOAD_sign}}, mem_rdata[7:0]} :
+     mem_halfwordAccess ? {{16{LOAD_sign}}, mem_rdata[15:0]} :
                           mem_rdata ;
 
    // STORE
@@ -284,7 +287,8 @@ module FemtoRV32(
    // combinatorially from state and other signals.
 
    // register write-back enable.
-   wire writeBack = ~(isBranch | isStore ) &
+   wire writeBack = isLoad ? (state[EXECUTE_bit] | state[WAIT_ALU_OR_MEM_bit]) && mem_ready :
+                    ~(isBranch | isStore ) &
                     (state[EXECUTE_bit] | state[WAIT_ALU_OR_MEM_bit]);
 
    wire jumpToPCplusImm = isJAL | isJALR | (isBranch & predicate);
