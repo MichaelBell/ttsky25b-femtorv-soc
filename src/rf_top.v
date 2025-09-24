@@ -3,6 +3,10 @@
 `default_nettype none
 
 module rf_top (
+`ifdef GL_TEST
+    inout wire VPWR,
+    inout wire VGND,
+`endif    
     input  wire [31:0] w_data,
     input  wire  [4:0] w_addr,
     input  wire        w_ena,
