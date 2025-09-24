@@ -89,15 +89,14 @@
     }
   },
 
+  "PDN_MACRO_CONNECTIONS": ["i_femtorv.i_rf VPWR VGND VDPWR VGND"],
+
   "//": "Macro power",
   "//": "  Disable IR Drop report, useless anyway",
   "RUN_IRDROP_REPORT": 0,
 
   "//": "  Have magic consider nets of same name to be connected since our power pads are not all internally connected",
   "MAGIC_NO_EXT_UNIQUE": 1,
-
-  "//": "  Full custom PDN config",
-  "FP_PDN_CFG": "dir::pdn_cfg.tcl",
 
   "//": "  All met4 stripes are not connected internally, this causes PDN to crap out ...",
   "ERROR_ON_PDN_VIOLATIONS": 0,
