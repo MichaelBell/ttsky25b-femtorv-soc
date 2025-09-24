@@ -76,7 +76,7 @@
   "MACROS": {
     "rf_top": {
       "instances": {
-        "i_rf": {
+        "i_femtorv.i_rf": {
           "location": [0.1, 45.0],
           "orientation": "E"
         }
