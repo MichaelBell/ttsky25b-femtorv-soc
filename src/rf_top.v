@@ -4,7 +4,7 @@
 
 module rf_top (
 `ifdef GL_TEST
-    inout wire VPWR,
+    inout wire VDPWR,
     inout wire VGND,
 `endif    
     input  wire [31:0] w_data,
