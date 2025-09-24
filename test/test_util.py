@@ -155,6 +155,7 @@ nibble_shift_order = [4, 0, 12, 8, 20, 16, 28, 24]
 
 async def send_instr(dut, data, ok_to_exit=False, allow_long_delay=False):
     global pc
+    #print(pc)
 
     restarted = False
     if dut.qspi_flash_select.value == 1:
@@ -170,8 +171,9 @@ async def send_instr(dut, data, ok_to_exit=False, allow_long_delay=False):
     for i in range(instr_len):
         dut.qspi_data_in.value = (data >> (nibble_shift_order[i])) & 0xF
         await ClockCycles(dut.clk, 1, False)
-        for _ in range(400 if allow_long_delay else 20):
+        for _ in range(400 if allow_long_delay else 30):
             if ok_to_exit and dut.qspi_flash_select.value == 1:
+                #print(" Early out")
                 return
             if dut.qspi_flash_select.value == 1 and not restarted:
                 assert i == 0
@@ -331,3 +333,8 @@ async def set_all_outputs_to_peripheral(dut, peripheral_num):
 def set_pc(addr):
     global pc
     pc = addr
+    #print("Jump to", pc)
+
+def get_pc():
+    global pc
+    return pc

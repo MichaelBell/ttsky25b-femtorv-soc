@@ -14,7 +14,7 @@ from riscvmodel.regnames import x0, x1, x2, sp, gp, tp, a0, a1, a2, a3, a4
 from riscvmodel import csrnames
 from riscvmodel.variant import RV32E
 
-from test_util import reset, start_read, send_instr, start_nops, stop_nops, read_byte, read_reg, load_reg, expect_load, expect_store
+from test_util import reset, start_read, send_instr, start_nops, stop_nops, read_byte, read_reg, load_reg, expect_load, expect_store, get_pc, set_pc
 
 @cocotb.test()
 async def test_start(dut):
@@ -41,6 +41,11 @@ async def test_start(dut):
 ### Random operation testing ###
 reg = [0] * 32
 
+OP_SIMPLE = 1
+OP_MEM = 2
+OP_J = 3
+OP_JR = 4
+
 # Each Op does reg[d] = fn(a, b)
 # fn will access reg global array
 class SimpleOp:
@@ -48,7 +53,7 @@ class SimpleOp:
         self.rvm_insn = rvm_insn
         self.fn = fn
         self.name = name
-        self.is_mem_op = False
+        self.op_type = OP_SIMPLE
 
     def randomize(self):
         self.rvm_insn_inst = self.rvm_insn()
@@ -162,7 +167,7 @@ class LoadOp:
         self.instr = instr
         self.fn = fn
         self.name = name
-        self.is_mem_op = True
+        self.op_type = OP_MEM
         self.min_imm = min_imm
         self.max_imm = max_imm
         self.imm_mul = imm_mul
@@ -203,7 +208,7 @@ class StoreOp:
         self.instr = instr
         self.fn = fn
         self.name = name
-        self.is_mem_op = True
+        self.op_type = OP_MEM
         self.min_imm = min_imm
         self.max_imm = max_imm
         self.imm_mul = imm_mul
@@ -236,6 +241,71 @@ class StoreOp:
         #print("Load {} from addr {:08x}".format(self.val, addr))
         assert await expect_store(dut, addr, self.bytes) == self.fn(self.rs1)
 
+class JumpOpBase:
+    def __init__(self, instr, min_imm, max_imm, imm_mul, name):
+        self.instr = instr
+        self.name = name
+        self.op_type = OP_J
+        self.min_imm = min_imm
+        self.max_imm = max_imm
+        self.imm_mul = imm_mul
+
+    def randomize(self):
+        self.rs1 = random.randint(1, 31)
+        while True:
+            self.rd = random.randint(0, 31)
+            if self.rd != gp:
+                break
+        self.imm = random.randint(self.min_imm, self.max_imm) * self.imm_mul
+
+    def execute_fn(self, rd, rs1, arg2):
+        pass
+
+    def get_valid_rd(self):
+        return self.rd
+
+    def get_valid_rs1(self):
+        return self.rs1
+
+    def get_valid_arg2(self):
+        return self.imm
+
+class JumpOp(JumpOpBase):
+    def __init__(self):
+        super().__init__(InstructionJAL, -0x80000, 0x7ffff, 2, "jal")
+
+    def encode(self, rd, rs1, arg2):
+        return self.instr(rd, arg2).encode()
+    
+    def jump(self, rd, rs1, arg2):
+        pc = get_pc()
+        set_pc(pc - 4 + arg2)
+        if rd != 0:
+            reg[rd] = pc
+
+    def randomize(self):
+        super().randomize()
+        self.imm = random.randint(max(-get_pc() // self.imm_mul, self.min_imm), min((0xfffffc - get_pc()) // self.imm_mul, self.max_imm)) * self.imm_mul
+        self.imm -= self.imm & 2
+
+class JROp(JumpOpBase):
+    def __init__(self):
+        super().__init__(InstructionJALR, -0x800, 0x7ff, 1, "jalr")
+        self.op_type = OP_JR
+
+    def encode(self, rd, rs1, arg2):
+        return self.instr(rd, rs1, arg2).encode()
+    
+    def jump(self, rd, rs1, arg2):
+        pc = get_pc()
+        set_pc(reg[rs1] + arg2)
+        if rd != 0:
+            reg[rd] = pc
+
+    def randomize(self):
+        super().randomize()
+        while self.rs1 == gp:
+            self.rs1 = random.randint(1, 31)
 
 ops = [
     SimpleOp(InstructionADDI, lambda rs1, imm: reg[rs1] + imm, "+i"),
@@ -265,6 +335,8 @@ ops = [
     StoreOp(InstructionSW, -0x800, 0x7ff, 1, 4, lambda rs1: reg[rs1] & 0xFFFFFFFF, "sw"),
     StoreOp(InstructionSH, -0x800, 0x7ff, 1, 2, lambda rs1: reg[rs1] & 0xFFFF, "sh"),
     StoreOp(InstructionSB, -0x800, 0x7ff, 1, 1, lambda rs1: reg[rs1] & 0xFF, "sb"),
+    JumpOp(),
+    JROp()
 ]
 
 @cocotb.test()
@@ -322,7 +394,7 @@ async def test_random(dut):
                     rs1 = instr.get_valid_rs1()
                     arg2 = instr.get_valid_arg2()
 
-                    if instr.is_mem_op:
+                    if instr.op_type == OP_MEM:
                         if latch_ram and random.randint(0, 2) == 2:
                             # Use latch RAM
                             addr = random.randint(0x7ffff00-instr.imm, 0x7ffff3c-instr.imm)
@@ -336,8 +408,13 @@ async def test_random(dut):
                         else:
                             # Use PSRAM
                             addr = random.randint(0x1000000-instr.imm, 0x1fffffc-instr.imm)
-                            if debug: print(f"addr {addr + instr.imm:x}")
+                            if debug: print(f"Mem addr {addr + instr.imm:x}")
                         await set_reg(dut, instr.base_reg, addr)
+                    if instr.op_type == OP_JR:
+                        addr = random.randint(-instr.imm+3, 0xfffffc-instr.imm)
+                        addr -= (addr + instr.imm) & 3
+                        if debug: print("Jump addr:", addr + instr.imm)
+                        await set_reg(dut, instr.rs1, addr)
 
                     instr.execute_fn(rd, rs1, arg2)
                     break
@@ -346,7 +423,7 @@ async def test_random(dut):
 
             if debug: print("x{} = x{} {} {}, now {} {:08x}".format(rd, rs1, arg2, instr.name, reg[rd], instr.encode(rd, rs1, arg2)))
             await send_instr(dut, instr.encode(rd, rs1, arg2))
-            if instr.is_mem_op:
+            if instr.op_type == OP_MEM:
                 if addr < 0x4000000:
                     assert addr + instr.imm >= 0
                     assert addr + instr.imm < 0x2000000
@@ -356,6 +433,8 @@ async def test_random(dut):
                     for i in range(instr.bytes):
                         RAM[(addr + instr.imm + 0x1000 + i) % RAM_SIZE] = val & 0xFF
                         val >>= 8
+            if instr.op_type == OP_JR or instr.op_type == OP_J:
+                instr.jump(rd, rs1, arg2)
             #if True:
             #    assert await read_reg(dut, rd) == reg[rd] & 0xFFFFFFFF
 
