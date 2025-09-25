@@ -350,7 +350,7 @@ async def test_random(dut):
     await reset(dut)
 
     seed = random.randint(0, 0xFFFFFFFF)
-    #seed = 4214535914
+    #seed = 3928128166
 
     latch_ram = False
     if latch_ram:
@@ -435,6 +435,15 @@ async def test_random(dut):
                         val >>= 8
             if instr.op_type == OP_JR or instr.op_type == OP_J:
                 instr.jump(rd, rs1, arg2)
+                for _ in range(3):
+                    if dut.qspi_flash_select.value == 1:
+                        break
+                    await ClockCycles(dut.clk, 1, False)
+                for _ in range(2):
+                    if dut.qspi_flash_select.value == 0:
+                        break
+                    await ClockCycles(dut.clk, 1, False)
+                await start_read(dut, get_pc())
             #if True:
             #    assert await read_reg(dut, rd) == reg[rd] & 0xFFFFFFFF
 

@@ -35,10 +35,13 @@ module tt_um_rebelmike_femtorv (
                     qspi_clk_out, qspi_data_out[1:0], qspi_flash_select};
   assign uio_oe = rst_n ? {2'b11, qspi_data_oe[3:2], 1'b1, qspi_data_oe[1:0], 1'b1} : 8'h00;
 
+  wire [23:1] instr_addr;
+  wire        instr_jump;
+  wire        instr_ready;
+
   wire [27:0] addr;
   wire  [1:0] write_n;
   wire  [1:0] read_n;
-  wire        read_complete;
   wire [31:0] data_to_write;
 
   wire        data_ready;
@@ -51,9 +54,11 @@ module tt_um_rebelmike_femtorv (
     .clk(clk),
     .rstn(rst_reg_n),
 
-    .instr_addr(23'b0),
-    .instr_fetch_restart(1'b0),
+    .instr_addr(instr_addr),
+    .instr_jump(instr_jump),
     .instr_fetch_stall(1'b0),
+
+    .instr_ready(instr_ready),
 
     .data_addr(addr[24:0]),
     .data_write_n(is_mem ? write_n : 2'b11),
@@ -78,10 +83,14 @@ module tt_um_rebelmike_femtorv (
     .clk(clk),
     .resetn(rst_reg_n),
 
+    .instr_addr(instr_addr),
+    .instr_jump(instr_jump),
+    .instr_ready(instr_ready),    
+
     .mem_addr(addr),
     .mem_wdata(data_to_write),
     .mem_write_n(write_n),
-    .mem_rdata(is_mem ? data_from_read : {16'd0, gpio_out, ui_in}),
+    .mem_rdata((is_mem || instr_ready) ? data_from_read : {16'd0, gpio_out, ui_in}),
     .mem_read_n(read_n),
     .mem_ready(is_mem ? data_ready : 1'b1)
   );
@@ -94,6 +103,6 @@ module tt_um_rebelmike_femtorv (
   assign uo_out = gpio_out;
 
   // List all unused inputs to prevent warnings
-  wire _unused = &{ena, 1'b0};
+  wire _unused = &{ena, uio_in[7:6], uio_in[3], uio_in[0], 1'b0};
 
 endmodule

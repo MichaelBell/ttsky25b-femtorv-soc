@@ -36,6 +36,10 @@ module FemtoRV32(
    input         clk,
    input         resetn,    // set to 0 to reset the processor
 
+   output [23:1] instr_addr,
+   output        instr_jump,
+   input         instr_ready,
+
    output [27:0] mem_addr,  // address bus
    output [31:0] mem_wdata, // data to be written
    output  [1:0] mem_write_n, // 11 = no write, 00 = 8-bits, 01 = 16-bits, 10 = 32-bits
@@ -118,7 +122,7 @@ module FemtoRV32(
    wire [31:0] aluIn2 = isALUreg | isBranch ? rs2 : Iimm;
 
    // The adder is used for both ALU and address generation.
-   wire [31:0] aluPlusIn1 = (isALU | isStore | isLoad | isJALR) ? aluIn1 : PC;
+   wire [31:0] aluPlusIn1 = (isALU | isStore | isLoad | isJALR) ? aluIn1 : {8'b0, PC};
    wire [31:0] aluPlusIn2 = isStore  ? Simm :
                             isJAL    ? Jimm :
                             isAUIPC  ? Uimm :
@@ -214,15 +218,14 @@ module FemtoRV32(
       jumpToPCplusImm ? PCplusImm                      :
                         PCplus4;
 
-   assign mem_addr = state[WAIT_INSTR_bit] | state[FETCH_INSTR_bit] ? PC     :
-                     state[EXECUTE_bit] & ~isLoad & ~isStore        ? PC_new :
-                                                              loadstore_addr ;
+   assign instr_addr = state[EXECUTE_bit] ? PC_new[23:1] : PC[23:1];
+   assign instr_jump = jumpToPCplusImm & state[EXECUTE_bit];
+
+   assign mem_addr = loadstore_addr;
 
    // The memory-read signal.
-   assign mem_read_n = (state[WAIT_INSTR_bit] | state[FETCH_INSTR_bit]) ? 2'b10 :
-                       (state[EXECUTE_bit] | state[WAIT_ALU_OR_MEM_bit]) & isLoad ? instr[13:12] :
-                       (state[EXECUTE_bit] & ~isStore) ? 2'b10 :
-                                                         2'b11;
+   assign mem_read_n = (state[EXECUTE_bit] | state[WAIT_ALU_OR_MEM_bit]) & isLoad ? instr[13:12] : 2'b11;
+
    // The memory-write signal
    assign mem_write_n = (state[EXECUTE_bit] | state[WAIT_ALU_OR_MEM_bit]) & isStore ? instr[13:12] : 2'b11;
 
@@ -311,7 +314,7 @@ module FemtoRV32(
       case(1'b1)
 
         state[WAIT_INSTR_bit]: begin
-           if(mem_ready) begin // may be high when executing from SPI flash
+           if(instr_ready) begin // may be high when executing from SPI flash
               instr <= mem_rdata[31:2]; // Bits 0 and 1 are ignored (see
               state <= EXECUTE;         // also the declaration of instr).
            end

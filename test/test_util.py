@@ -34,8 +34,8 @@ async def reset(dut, latency=1, ui_in=0x80):
     global pc
     pc = 0
 
-    # Should start reading flash after 1 cycle
-    await ClockCycles(dut.clk, 1)
+    # Should start reading flash after 2 cycles
+    await ClockCycles(dut.clk, 2)
     await start_read(dut, 0)
     await send_instr(dut, InstructionLUI(gp, 0x01000).encode())
     await send_instr(dut, InstructionADDI(gp, gp, 0x400).encode())
@@ -157,14 +157,12 @@ async def send_instr(dut, data, ok_to_exit=False, allow_long_delay=False):
     global pc
     #print(pc)
 
-    restarted = False
     if dut.qspi_flash_select.value == 1:
         for _ in range(10):
             await ClockCycles(dut.clk, 1, False)
             if dut.qspi_flash_select.value == 0:
                 break
         await start_read(dut, pc)
-        restarted = True
 
     instr_len = 8 if (data & 3) == 3 else 4
 
@@ -175,15 +173,6 @@ async def send_instr(dut, data, ok_to_exit=False, allow_long_delay=False):
             if ok_to_exit and dut.qspi_flash_select.value == 1:
                 #print(" Early out")
                 return
-            if dut.qspi_flash_select.value == 1 and not restarted:
-                assert i == 0
-                for _ in range(10):
-                    await ClockCycles(dut.clk, 1, False)
-                    if dut.qspi_flash_select.value == 0:
-                        break
-                await start_read(dut, pc)
-                restarted = True
-                dut.qspi_data_in.value = (data >> (nibble_shift_order[i])) & 0xF
             assert dut.qspi_flash_select.value == 0
             if dut.qspi_clk_out.value == 0:
                 await ClockCycles(dut.clk, 1, False)
@@ -193,6 +182,9 @@ async def send_instr(dut, data, ok_to_exit=False, allow_long_delay=False):
         assert dut.qspi_data_oe.value == 0
         await ClockCycles(dut.clk, 1, False)
         assert dut.qspi_clk_out.value == 0
+        if ok_to_exit and dut.qspi_flash_select.value == 1:
+            #print(" Early out")
+            return
         if i != instr_len - 1:
             assert dut.qspi_flash_select.value == 0
 

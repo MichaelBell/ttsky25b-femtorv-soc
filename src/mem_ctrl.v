@@ -8,13 +8,10 @@ module tinyqv_mem_ctrl (
     input rstn,
 
     input [23:1] instr_addr,
-    input        instr_fetch_restart,
+    input        instr_jump,
     input        instr_fetch_stall,
 
-    output reg     instr_fetch_started,
-    output reg     instr_fetch_stopped,
-    output  [15:0] instr_data,
-    output         instr_ready,
+    output       instr_ready,
 
     input [24:0] data_addr,
     input [1:0]  data_write_n, // 11 = no write, 00 = 8-bits, 01 = 16-bits, 10 = 32-bits
@@ -51,9 +48,10 @@ module tinyqv_mem_ctrl (
     reg qspi_write_done;
     wire qspi_busy;
     reg instr_active;
+    reg instr_fetch_restart;
 
     wire is_instr = instr_active || start_instr;
-    wire [1:0] txn_len = is_instr ? 2'b01 : data_txn_len;
+    wire [1:0] txn_len = is_instr ? 2'b11 : data_txn_len;
     wire [24:0] addr_in = is_instr ? {1'b0, instr_addr, 1'b0} : data_addr[24:0];
     reg [31:0] qspi_data_buf;
     reg [1:0] qspi_data_byte_idx;
@@ -62,7 +60,7 @@ module tinyqv_mem_ctrl (
     wire [7:0] qspi_data_out;
 
     // Only stall on the last byte of an instruction
-    wire stall_txn = instr_active && instr_fetch_stall && !instr_ready && qspi_data_byte_idx == 2'b01;
+    wire stall_txn = instr_active && instr_fetch_stall && !instr_ready && qspi_data_byte_idx == 2'b11;
     reg data_stall;
 
     always @(*) begin
@@ -75,14 +73,9 @@ module tinyqv_mem_ctrl (
         if (qspi_busy || qspi_write_done) begin
             // A transaction is running
             if (instr_active) begin
-                if (instr_fetch_restart && (!instr_fetch_started || stall_txn)) begin
-                    // Stop immediately on restart or if already stalled
+                if (instr_fetch_restart || data_txn_n != 2'b11) begin
+                    // Stop immediately on restart or data txn
                     stop_txn = 1;
-                end else if ((qspi_data_ready && qspi_data_byte_idx == 2'b01) || instr_fetch_stall) begin
-                    // End of previous transaction or instruction buffer full, stop if a data txn is waiting
-                    if (data_txn_n != 2'b11) begin
-                        stop_txn = 1;
-                    end
                 end
             end else if ((qspi_data_ready || qspi_data_req) && qspi_data_byte_idx == data_txn_len && !continue_txn) begin
                 // Data transaction is complete
@@ -137,11 +130,9 @@ module tinyqv_mem_ctrl (
 
     always @(posedge clk) begin
         if (!rstn) begin
-            instr_fetch_started <= 1'b0;
-            instr_fetch_stopped <= 1'b0;
+            instr_fetch_restart <= 1'b0;
         end else begin
-            instr_fetch_started <= start_instr;
-            instr_fetch_stopped <= stop_txn;
+            instr_fetch_restart <= start_instr ? 1'b0 : stop_txn | !instr_active | instr_jump;
         end
     end
 
@@ -167,8 +158,7 @@ module tinyqv_mem_ctrl (
         end
     end
 
-    assign instr_data = {qspi_data_out, qspi_data_buf[7:0]};
-    assign instr_ready = instr_active && qspi_data_ready && qspi_data_byte_idx == 2'b01;
+    assign instr_ready = instr_active && qspi_data_ready && qspi_data_byte_idx == 2'b11;
 
     always @(posedge clk) begin
         qspi_write_done <= qspi_data_req && qspi_data_byte_idx == data_txn_len;
@@ -205,9 +195,10 @@ module tinyqv_mem_ctrl (
     end
 
     assign data_ready = !instr_active && ((qspi_data_ready && qspi_data_byte_idx == data_txn_len) || (data_write_n != 2'b11 && ((data_stall && qspi_data_byte_idx == 2'b00) || (data_continue ? start_write : qspi_write_done))));
-    assign data_from_read = data_ready ? ({qspi_data_out, qspi_data_buf[23:16],
-        data_txn_len == 2'b01 ? qspi_data_out : qspi_data_buf[15:8],
-        data_txn_len == 2'b00 ? qspi_data_out : qspi_data_buf[7:0]}) : qspi_data_buf;
+    assign data_from_read = (qspi_data_ready && qspi_data_byte_idx == txn_len) ? 
+      ({qspi_data_out, qspi_data_buf[23:16],
+        txn_len == 2'b01 ? qspi_data_out : qspi_data_buf[15:8],
+        txn_len == 2'b00 ? qspi_data_out : qspi_data_buf[7:0]}) : qspi_data_buf;
 
     assign debug_stall_txn = stall_txn;
     assign debug_stop_txn = stop_txn;
