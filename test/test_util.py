@@ -18,7 +18,8 @@ async def reset(dut, latency=1, ui_in=0x80):
     dut.uio_in[3].value = 0
     dut.uio_in[6].value = 0
     dut.uio_in[7].value = 0
-    dut.qspi_data_in.value = 0
+    if hasattr(dut, "qspi_data_in"):
+        dut.qspi_data_in.value = 0
     dut.rst_n.value = 1
     #dut.uart_rx.value = 1
     await ClockCycles(dut.clk, 2)
@@ -36,10 +37,11 @@ async def reset(dut, latency=1, ui_in=0x80):
 
     # Should start reading flash after 2 cycles
     await ClockCycles(dut.clk, 2)
-    await start_read(dut, 0)
-    await send_instr(dut, InstructionLUI(gp, 0x01000).encode())
-    await send_instr(dut, InstructionADDI(gp, gp, 0x400).encode())
-    await send_instr(dut, InstructionLUI(tp, 0x08000).encode())
+    if hasattr(dut, "qspi_data_in"):
+        await start_read(dut, 0)
+        await send_instr(dut, InstructionLUI(gp, 0x01000).encode())
+        await send_instr(dut, InstructionADDI(gp, gp, 0x400).encode())
+        await send_instr(dut, InstructionLUI(tp, 0x08000).encode())
 
 select = None
 
