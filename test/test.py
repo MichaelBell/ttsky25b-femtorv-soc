@@ -224,6 +224,9 @@ async def test_game(dut):
 
     # Reset
     await reset(dut)
+
+    dut.game_clk.value = 0
+    dut.game_latch.value = 0
     
     # Read controller state
     await send_instr(dut, InstructionLW(x1, tp, 0x34).encode())
@@ -231,7 +234,7 @@ async def test_game(dut):
     await send_instr(dut, InstructionLW(x1, tp, 0x38).encode())
     assert await read_reg(dut, x1) == 0xFFF
 
-    for i in range(10):
+    for i in range(20):
         await start_nops(dut)
 
         game_word = random.randint(0, 0xffffff)
